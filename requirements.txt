@@ -1,0 +1,8 @@
+streamlit
+google-generativeai
+anthropic
+openai
+pillow
+pandas
+python-dotenv
+st-gsheets-connection
