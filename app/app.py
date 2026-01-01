@@ -39,11 +39,11 @@ with st.sidebar:
 
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Invoice",width='400')
+        st.image(image, caption="Uploaded Invoice",width='stretch')
         original_filename = uploaded_file.name
         image_name = os.path.splitext(original_filename)[0]
 
-        if st.button("Extract Invoice",width='400'):
+        if st.button("Extract Invoice",width='stretch'):
             with st.spinner("Extracting Invoice..."):
                 try:
                     uploaded_file.seek(0)
@@ -105,7 +105,7 @@ if st.session_state.invoice_data and st.session_state.model:
             sheet_df = get_gsheet_data()
 
         st.subheader("📊 Google Sheets Data")
-        st.dataframe(sheet_df, use_container_width=True)        
+        st.dataframe(sheet_df, width='stretch')        
        
     except json.JSONDecodeError:
         st.error("Failed to parse JSON")
