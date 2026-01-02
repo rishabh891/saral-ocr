@@ -1,5 +1,5 @@
 import streamlit as st
-from helper import get_api_keys, encode_image, extract_with_openai, update_gsheet,get_gsheet_data
+from helper import encode_image, extract_with_openai, update_gsheet,get_gsheet_data, extract_prompt_from_file
 from PIL import Image
 import pandas as pd
 import json
@@ -8,10 +8,7 @@ from datetime import datetime
 
 
 
-st.set_page_config(page_title="SARAL OCR", layout="wide")
-
-
-openai_api = get_api_keys()
+st.set_page_config(page_title="SARAL OCR", layout="wide", initial_sidebar_state="expanded")
 
 # Initialize state
 if "invoice_data" not in st.session_state:
@@ -25,9 +22,14 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Select Model",
-        ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-4.1","gpt-4.1-mini"],
+        ["gpt-4o", "gpt-4o-mini", "gpt-4.1","gpt-4.1-mini"],
         index=0,
     )
+
+    prompt_file = st.file_uploader(
+    "Upload Prompt File (PDF / DOCX / TXT)",
+    type=["pdf", "docx", "txt"]
+     )
 
     st.subheader("📤 Upload Invoice")
 
@@ -47,10 +49,14 @@ with st.sidebar:
             with st.spinner("Extracting Invoice..."):
                 try:
                     uploaded_file.seek(0)
+                    if prompt_file:
+                        prompt = extract_prompt_from_file(prompt_file)
+                    else:
+                        prompt = ""
                     image_base64 = encode_image(uploaded_file)
 
                     st.session_state.invoice_data, st.session_state.model = extract_with_openai(
-                        image_base64, model_name, openai_api
+                        image_base64, model_name, prompt
                     )
 
                 except Exception as e:
@@ -62,18 +68,13 @@ if st.session_state.invoice_data and st.session_state.model:
   
 
     raw = st.session_state.invoice_data
-
-    # Safe JSON extraction
     try:
-        # First try to load it directly
         json_data = raw
-        # If it contains markdown code blocks, strip them
         if "```json" in raw:
             json_data = raw.split("```json")[1].split("```")[0]
         elif "```" in raw:
             json_data = raw.split("```")[1].split("```")[0]
             
-        # Parse JSON
 
         parsed = json.loads(json_data)
 

@@ -1,9 +1,11 @@
 import streamlit as st
-import openai
+from openai import OpenAI
 import base64
 import json
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+from pypdf import PdfReader
+from docx import Document
 
 INVOICE_SCHEMA={
     "invoice_number": "",
@@ -154,6 +156,8 @@ def update_gsheet(data_dict):
     except (pd.errors.EmptyDataError, Exception):
         df = pd.DataFrame()
     new_row_df = pd.DataFrame([data_dict])
+    if "invoice_number" in new_row_df.columns:
+        new_row_df["invoice_number"] = new_row_df["invoice_number"].astype(str)
     updated_df = pd.concat([df, new_row_df], ignore_index=True)
     conn.update(spreadsheet=st.secrets.get("spreadsheet", ""), data=updated_df)
                         
@@ -163,38 +167,83 @@ def get_gsheet_data():
         df = conn.read(spreadsheet=st.secrets.get("spreadsheet", ""), ttl=5)
     except (pd.errors.EmptyDataError, Exception):
         df = pd.DataFrame()
+    
+    if "invoice_number" in df.columns:
+        df["invoice_number"] = df["invoice_number"].astype(str)
     return df
-def extract_with_openai(image_base64, model_name, api_key):
-    client = openai.OpenAI(api_key=api_key)
-    prompt = f"""Extract all information from this invoice image and return it as a JSON object with the following structure:{json.dumps(INVOICE_SCHEMA, indent=2)}
-    Extract all visible information accurately. If a field is not present, leave it empty or as 0.
-    IMPORTANT: output valid JSON only. Do not wrap the output in markdown code blocks (e.g. ```json ... ```). just raw json text.
-    """
 
-    response = client.chat.completions.create(
+
+def extract_prompt_from_file(uploaded_file):
+    file_name = uploaded_file.name.lower()
+
+    if file_name.endswith(".pdf"):
+        reader = PdfReader(uploaded_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+
+    elif file_name.endswith(".docx"):
+        doc = Document(io.BytesIO(uploaded_file.read()))
+        return "\n".join([p.text for p in doc.paragraphs]).strip()
+
+    elif file_name.endswith(".txt"):
+        return uploaded_file.read().decode("utf-8").strip()
+
+    else:
+        raise ValueError("Unsupported prompt file format")
+
+def extract_with_openai(image_base64, model_name, prompt=None):
+    client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+
+    # Build base prompt
+    if prompt and prompt.strip():
+        base_prompt = f"""
+Extract all information from this invoice image and return it as a JSON object
+according to the following instructions:
+{prompt}
+"""
+    else:
+        base_prompt = f"""
+Extract all information from this invoice image and return it as a JSON object
+with the following structure:
+
+{json.dumps(INVOICE_SCHEMA, indent=2)}
+"""
+
+    # Final instruction wrapper
+    final_prompt = f"""
+{base_prompt}
+
+Extract all visible information accurately.
+If a field is not present, leave it empty or as 0.
+
+IMPORTANT RULES:
+- Output valid JSON only
+- Do NOT wrap the output in markdown
+"""
+
+    response = client.responses.create(
         model=model_name,
-        messages=[
+        input=[
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "text",
-                        "text": prompt
+                        "type": "input_text",
+                        "text": final_prompt.strip()
                     },
                     {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_base64}"
-                        }
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{image_base64}"
                     }
-                ],
+                ]
             }
         ],
-        max_tokens=2000,
+        max_output_tokens=2000,
     )
-    
-    model = response.model
-    return response.choices[0].message.content, model
+
+    return response.output_text, response.model
 
 
     
