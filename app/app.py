@@ -22,7 +22,7 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Select Model",
-        ["gpt-4o", "gpt-4o-mini", "gpt-4.1","gpt-4.1-mini"],
+        ["gpt-4o", "gpt-4o-mini", "gpt-4.1","gpt-4.1-mini", "gpt-5-mini","gpt-5-nano",  "gpt-5.2"],
         index=0,
     )
 
@@ -41,7 +41,8 @@ with st.sidebar:
 
     if uploaded_file:
         image = Image.open(uploaded_file)
-        st.image(image, caption="Uploaded Invoice",width='stretch')
+        image = image.rotate(-90)
+        st.image(image, caption="Uploaded Invoice")
         original_filename = uploaded_file.name
         image_name = os.path.splitext(original_filename)[0]
 

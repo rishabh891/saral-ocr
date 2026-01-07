@@ -196,7 +196,9 @@ def extract_prompt_from_file(uploaded_file):
 def extract_with_openai(image_base64, model_name, prompt=None):
     client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
 
-    # Build base prompt
+    # -----------------------------
+    # Prompt
+    # -----------------------------
     if prompt and prompt.strip():
         base_prompt = f"""
 Extract all information from this invoice image and return it as a JSON object
@@ -211,7 +213,6 @@ with the following structure:
 {json.dumps(INVOICE_SCHEMA, indent=2)}
 """
 
-    # Final instruction wrapper
     final_prompt = f"""
 {base_prompt}
 
@@ -223,16 +224,27 @@ IMPORTANT RULES:
 - Do NOT wrap the output in markdown
 """
 
-    response = client.responses.create(
-        model=model_name,
-        input=[
+    # -----------------------------
+    # Model-aware reasoning control
+    # -----------------------------
+    if model_name.startswith("gpt-5"):
+        reasoning = {"effort": "low"}
+        text_cfg = {"verbosity": "low"}
+    else:
+        # GPT-4o family
+        reasoning = None
+        text_cfg = None
+
+    # -----------------------------
+    # Build request
+    # -----------------------------
+    request = {
+        "model": model_name,
+        "input": [
             {
                 "role": "user",
                 "content": [
-                    {
-                        "type": "input_text",
-                        "text": final_prompt.strip()
-                    },
+                    {"type": "input_text", "text": final_prompt.strip()},
                     {
                         "type": "input_image",
                         "image_url": f"data:image/png;base64,{image_base64}"
@@ -240,10 +252,18 @@ IMPORTANT RULES:
                 ]
             }
         ],
-        max_output_tokens=2000,
-    )
+        "max_output_tokens": 4000,
+    }
+
+    if reasoning:
+        request["reasoning"] = reasoning
+    if text_cfg:
+        request["text"] = text_cfg
+
+    response = client.responses.create(**request)
 
     return response.output_text, response.model
+
 
 
     
