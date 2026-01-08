@@ -1,5 +1,5 @@
 import streamlit as st
-from helper import encode_image, extract_with_openai, update_gsheet,get_gsheet_data, extract_prompt_from_file
+from helper import encode_image, extract_with_openai, update_gsheet,get_gsheet_data, extract_prompt_from_file, extract_with_gemini
 from PIL import Image
 import pandas as pd
 import json
@@ -22,7 +22,7 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Select Model",
-        ["gpt-4o", "gpt-4o-mini", "gpt-4.1","gpt-4.1-mini", "gpt-5-mini","gpt-5-nano",  "gpt-5.2"],
+        ["gpt-4.1", "gpt-5-mini","gpt-5-nano",  "gpt-5.2", "gemini-2.5-flash-lite", "gemini-2.5-flash"],
         index=0,
     )
 
@@ -56,9 +56,12 @@ with st.sidebar:
                         prompt = ""
                     image_base64 = encode_image(uploaded_file)
 
-                    st.session_state.invoice_data, st.session_state.model = extract_with_openai(
-                        image_base64, model_name, prompt
-                    )
+                    if model_name.startswith('gpt'):
+                        st.session_state.invoice_data, st.session_state.model = extract_with_openai(
+                        image_base64, model_name, prompt)
+                    else:
+                        st.session_state.invoice_data, st.session_state.model = extract_with_gemini(
+                        image_base64, model_name, prompt)
 
                 except Exception as e:
                     st.error(f"Error extracting invoice: {str(e)}")

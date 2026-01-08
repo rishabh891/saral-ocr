@@ -6,6 +6,8 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from pypdf import PdfReader
 from docx import Document
+from google import genai
+from google.genai import types
 
 INVOICE_SCHEMA={
     "invoice_number": "",
@@ -193,12 +195,7 @@ def extract_prompt_from_file(uploaded_file):
     else:
         raise ValueError("Unsupported prompt file format")
 
-def extract_with_openai(image_base64, model_name, prompt=None):
-    client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
-
-    # -----------------------------
-    # Prompt
-    # -----------------------------
+def get_prompt(prompt = None):
     if prompt and prompt.strip():
         base_prompt = f"""
 Extract all information from this invoice image and return it as a JSON object
@@ -223,10 +220,13 @@ IMPORTANT RULES:
 - Output valid JSON only
 - Do NOT wrap the output in markdown
 """
+    return final_prompt
 
-    # -----------------------------
-    # Model-aware reasoning control
-    # -----------------------------
+
+def extract_with_openai(image_base64, model_name, prompt=None):
+    client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", ""))
+
+    final_prompt=get_prompt(prompt)
     if model_name.startswith("gpt-5"):
         reasoning = {"effort": "low"}
         text_cfg = {"verbosity": "low"}
@@ -263,6 +263,40 @@ IMPORTANT RULES:
     response = client.responses.create(**request)
 
     return response.output_text, response.model
+
+def extract_with_gemini(image_base64, model_name, prompt=None):
+    client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
+
+    final_prompt=get_prompt(prompt)
+
+    image_bytes = base64.b64decode(image_base64)
+
+    response = client.models.generate_content(
+        model=model_name,
+        config={
+            "temperature": 0,
+            "top_p": 0.1,
+            "max_output_tokens": 6000,
+        },
+        contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=final_prompt),
+                        types.Part.from_bytes(
+                            data=image_bytes, 
+                            mime_type="image/png"
+                        )
+                    ]
+                )
+            ]
+    )
+    return response.text.strip(), model_name
+    
+
+
+
+
 
 
 
