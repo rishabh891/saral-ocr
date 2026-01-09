@@ -115,7 +115,7 @@ if st.session_state.invoice_data and st.session_state.model:
 
             new_prompt = f"""We ran OCR on the invoice to get necessary information. However, we found some errors. Please try to find the information again . The error is {concat_error}. Respond the answer in JSON format using the schema {probable_schema}. Do not include any other text in your response other than the JSON object."""
 
-            new_json_data , model= extract_with_openai(image_base64, 'gemini-2.5-flash-lite', new_prompt)
+            new_json_data , model= extract_with_gemini(image_base64, 'gemini-2.5-flash-lite', new_prompt)
             if "```json" in new_json_data:
                 new_json_data = new_json_data.split("```json")[1].split("```")[0]
             elif "```" in new_json_data:
