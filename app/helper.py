@@ -8,6 +8,7 @@ from pypdf import PdfReader
 from docx import Document
 from google import genai
 from google.genai import types
+import re
 
 INVOICE_SCHEMA={
     "invoice_number": "",
@@ -292,8 +293,31 @@ def extract_with_gemini(image_base64, model_name, prompt=None):
             ]
     )
     return response.text.strip(), model_name
-    
 
+def invoice_validator(data_dict):
+    gstin_regex = re.compile(
+        r'^(0[1-9]|[1-2][0-9]|3[0-8])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'
+    )
+
+    errors = []
+
+    seller_gstin = data_dict.get('seller_details', {}).get('gstin')
+    buyer_gstin = data_dict.get('buyer_details', {}).get('gstin')
+
+    if not seller_gstin:
+        errors.append('SELLER GSTIN IS MISSING')
+    else:
+        if not gstin_regex.fullmatch(str(seller_gstin)):
+            errors.append('INVALID SELLER GSTIN')
+
+
+    if not buyer_gstin:
+        errors.append('BUYER GSTIN IS MISSING')
+    else:
+        if not gstin_regex.fullmatch(str(buyer_gstin)):
+            errors.append('INVALID BUYER GSTIN')
+
+    return errors
 
 
 

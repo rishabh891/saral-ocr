@@ -1,5 +1,5 @@
 import streamlit as st
-from helper import encode_image, extract_with_openai, update_gsheet,get_gsheet_data, extract_prompt_from_file, extract_with_gemini
+from helper import encode_image, extract_with_openai, update_gsheet,get_gsheet_data, extract_prompt_from_file, extract_with_gemini, invoice_validator
 from PIL import Image
 import pandas as pd
 import json
@@ -70,7 +70,6 @@ with st.sidebar:
 
 if st.session_state.invoice_data and st.session_state.model:
   
-
     raw = st.session_state.invoice_data
     try:
         json_data = raw
@@ -79,9 +78,8 @@ if st.session_state.invoice_data and st.session_state.model:
         elif "```" in raw:
             json_data = raw.split("```")[1].split("```")[0]
             
-
+        
         parsed = json.loads(json_data)
-
         data_dict = {
             "id": image_name,
             **parsed,
@@ -101,7 +99,39 @@ if st.session_state.invoice_data and st.session_state.model:
                         st.success("✅ Data successfully saved to Google Sheets!")
                     except Exception as e:
                         st.error(f"Error saving to Google Sheets: {e}")
+        st.divider()
+        errors = invoice_validator(data_dict=data_dict)
+        if len(errors) > 0:
+            st.text("Errors after initial extraction")
+            image_base64 = encode_image(uploaded_file)
+            probable_schema= {
+                "buyer_gstin": "This represents the GST number of the buyer in the invoice.",
+                "seller_gstin": "This represents the GST number of the seller in the invoice.",
+            }
+            concat_error=""
+            for e in errors:
+                concat_error+=e+"\n"
+                st.error(e)
 
+            new_prompt = f"""We ran OCR on the invoice to get necessary information. However, we found some errors. Please try to find the information again . The error is {concat_error}. Respond the answer in JSON format using the schema {probable_schema}. Do not include any other text in your response other than the JSON object."""
+
+            new_json_data , model= extract_with_openai(image_base64, 'gpt-4.1', new_prompt)
+            if "```json" in new_json_data:
+                new_json_data = new_json_data.split("```json")[1].split("```")[0]
+            elif "```" in new_json_data:
+                new_json_data = new_json_data.split("```")[1].split("```")[0]
+            parsed_new_json= json.loads(new_json_data)
+            st.json(parsed_new_json)
+            data_dict['buyer_details']['gstin'] = parsed_new_json['buyer_gstin']
+            data_dict['seller_details']['gstin'] = parsed_new_json['seller_gstin']
+            st.text('Values after 1st retry')
+            st.json(parsed_new_json)
+            
+            st.divider()
+           
+        else:
+            st.success("✅ Data successfully validated!")
+        st.text('Final extracted data')
         st.json(data_dict)
         if st.session_state.refresh_gsheet:
             sheet_df = get_gsheet_data()
