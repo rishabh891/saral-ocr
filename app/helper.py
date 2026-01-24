@@ -264,11 +264,215 @@ def extract_with_openai(image_base64, model_name, prompt=None):
 
     response = client.responses.create(**request)
 
-    return response.output_text, response.model
+    return response.output_text
 
 # 1. Initialize client globally once to save handshake time
 client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
-target_schema = {
+po_target_schema = {
+    "type": "OBJECT",
+    "properties": {
+        "purchase_order_number": {"type": "STRING"},
+        "purchase_order_date": {"type": "STRING", "description": "YYYY-MM-DD"},
+        "purchase_order_type": {"type": "STRING", "nullable": True},
+
+        "seller_name": {"type": "STRING"},
+        "buyer_name": {"type": "STRING"},
+
+        "currency_code": {"type": "STRING", "nullable": True},
+        "model_name": {"type": "STRING"},
+        "scan_timestamp": {"type": "STRING", "description": "ISO-8601-with-TZ"},
+
+        "linked_contract_number": {"type": "STRING", "nullable": True},
+
+        "line_items": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "line_number": {
+                        "type": "NUMBER",
+                        "nullable": False,
+                        "description": "Set to 0 if not found"
+                    },
+
+                    "item_code": {
+                        "type": "STRING",
+                        "nullable": True,
+                        "description": "Material / SKU / Service code"
+                    },
+
+                    "description": {"type": "STRING"},
+
+                    "classification": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "hsn_sac_code": {"type": "STRING", "nullable": True},
+                            "is_service": {"type": "BOOLEAN", "nullable": True}
+                        }
+                    },
+
+                    "quantities": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "ordered_quantity": {
+                                "type": "NUMBER",
+                                "nullable": False,
+                                "description": "Set to 0.0 if not found"
+                            },
+                            "unit_of_measure": {"type": "STRING", "nullable": True}
+                        },
+                        "required": ["ordered_quantity"]
+                    },
+
+                    "financials": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "unit_price": {
+                                "type": "NUMBER",
+                                "nullable": False,
+                                "description": "Authoritative PO price"
+                            },
+                            "gross_amount": {
+                                "type": "NUMBER",
+                                "nullable": False,
+                                "description": "ordered_quantity * unit_price"
+                            },
+                            "discount_amount": {
+                                "type": "NUMBER",
+                                "nullable": False,
+                                "description": "Set to 0.0 if not found"
+                            },
+                            "taxable_value": {
+                                "type": "NUMBER",
+                                "nullable": False,
+                                "description": "Gross - discount"
+                            }
+                        },
+                        "required": [
+                            "unit_price",
+                            "gross_amount",
+                            "discount_amount",
+                            "taxable_value"
+                        ]
+                    },
+
+                    "taxes": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "tax_rate_percentage": {"type": "NUMBER", "nullable": False},
+                            "igst_applicable": {"type": "BOOLEAN", "nullable": True},
+                            "cgst_applicable": {"type": "BOOLEAN", "nullable": True},
+                            "sgst_applicable": {"type": "BOOLEAN", "nullable": True}
+                        },
+                        "required": ["tax_rate_percentage"]
+                    },
+
+                    "total_line_amount": {
+                        "type": "NUMBER",
+                        "nullable": False,
+                        "description": "Taxable + taxes (if included in PO)"
+                    }
+                },
+                "required": ["line_number", "description", "total_line_amount"]
+            }
+        },
+
+        "seller_details": {
+            "type": "OBJECT",
+            "properties": {
+                "name": {"type": "STRING", "nullable": True},
+                "gstin": {"type": "STRING", "nullable": True},
+                "pan": {"type": "STRING", "nullable": True},
+                "state_code": {"type": "STRING", "nullable": True}
+            }
+        },
+
+        "buyer_details": {
+            "type": "OBJECT",
+            "properties": {
+                "name": {"type": "STRING", "nullable": True},
+                "gstin": {"type": "STRING", "nullable": True},
+                "pan": {"type": "STRING", "nullable": True},
+                "state_code": {"type": "STRING", "nullable": True}
+            }
+        },
+
+        "financial_totals": {
+            "type": "OBJECT",
+            "properties": {
+                "total_taxable_value": {
+                    "type": "NUMBER",
+                    "nullable": False,
+                    "description": "Set to 0.0 if not found"
+                },
+                "total_tax_amount": {
+                    "type": "NUMBER",
+                    "nullable": False,
+                    "description": "Set to 0.0 if not found"
+                },
+                "grand_total": {
+                    "type": "NUMBER",
+                    "nullable": False,
+                    "description": "Expected invoice cap"
+                }
+            },
+            "required": [
+                "total_taxable_value",
+                "total_tax_amount",
+                "grand_total"
+            ]
+        },
+
+        "tolerance_rules": {
+            "type": "OBJECT",
+            "properties": {
+                "quantity_tolerance_percentage": {
+                    "type": "NUMBER",
+                    "nullable": False,
+                    "description": "e.g. 5 means ±5%"
+                },
+                "price_tolerance_percentage": {
+                    "type": "NUMBER",
+                    "nullable": False
+                }
+            },
+            "required": [
+                "quantity_tolerance_percentage",
+                "price_tolerance_percentage"
+            ]
+        },
+
+        "delivery_terms": {
+            "type": "OBJECT",
+            "properties": {
+                "delivery_date": {"type": "STRING", "nullable": True},
+                "delivery_location": {"type": "STRING", "nullable": True},
+                "incoterms": {"type": "STRING", "nullable": True}
+            }
+        },
+
+        "approval_metadata": {
+            "type": "OBJECT",
+            "properties": {
+                "approved_by": {"type": "STRING", "nullable": True},
+                "approval_date": {"type": "STRING", "nullable": True},
+                "approval_status": {"type": "STRING", "nullable": True}
+            }
+        }
+    },
+
+    "required": [
+        "purchase_order_number",
+        "purchase_order_date",
+        "seller_name",
+        "buyer_name",
+        "model_name",
+        "scan_timestamp",
+        "financial_totals"
+    ]
+}
+
+invoice_target_schema = {
     "type": "OBJECT",
     "properties": {
         "invoice_number": {"type": "STRING"},
@@ -498,10 +702,14 @@ target_schema = {
     ]
 }
 
-def extract_with_gemini(image_base64, model_name, prompt=None):
-    # Prepare the dynamic data
-    final_prompt = get_prompt(prompt)
+def extract_with_gemini(image_base64, model_name, doc_type):
+   
     image_bytes = base64.b64decode(image_base64)
+
+    if doc_type == "invoice":
+        response_schema=invoice_target_schema
+    else:
+        response_schema=po_target_schema
     
     # 2. Generate content with static instructions separated
     response = client.models.generate_content(
@@ -510,323 +718,32 @@ def extract_with_gemini(image_base64, model_name, prompt=None):
             types.Part.from_bytes(data=image_bytes, mime_type="image/png")
         ],
         config=types.GenerateContentConfig(
-            # Moves your rules/schema into the model's core logic
            system_instruction="Extract the requested data from the image accurately.",
             temperature=0,
             top_p=0.1,
             max_output_tokens=6000,
-            # Programmatically forces JSON (no markdown backticks!)
             response_mime_type="application/json",
-            response_schema=target_schema
+            response_schema=response_schema
         )
     )
 
-    # 3. Clean Metadata Extraction
     usage = response.usage_metadata
     token_split = {
         "prompt": usage.prompt_token_count,
-        # Safely handle 'thoughts' which only exists for reasoning models
         "thoughts": getattr(usage, 'thoughts_token_count', 0),
         "candidates": usage.candidates_token_count,
         "total": usage.total_token_count
     }
 
-    return response.text.strip(), model_name, token_split
-def invoice_validator(data_dict):
-    gstin_regex = re.compile(
-        r'^(0[1-9]|[1-2][0-9]|3[0-8])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'
-    )
+    return response.text.strip(), token_split
 
-    errors = []
-
-    seller_gstin = data_dict.get('seller_details', {}).get('gstin')
-    buyer_gstin = data_dict.get('buyer_details', {}).get('gstin')
-
-    if not seller_gstin:
-        errors.append('SELLER GSTIN IS MISSING')
+def extract_validator(uploaded_doc, model_name, doc_type):
+    uploaded_doc.seek(0)
+    image_base64 = encode_image(uploaded_doc)
+    
+    if model_name.startswith('gpt'):
+        data = extract_with_openai(image_base64, model_name, prompt="")
     else:
-        if not gstin_regex.fullmatch(str(seller_gstin)):
-            errors.append('INVALID SELLER GSTIN')
-
-
-    if not buyer_gstin:
-        errors.append('BUYER GSTIN IS MISSING')
-    else:
-        if not gstin_regex.fullmatch(str(buyer_gstin)):
-            errors.append('INVALID BUYER GSTIN')
-
-    return errors
-
-def validator(data_dict):
-    validator_json = {}
-
-    # Invoice number validation
-    if not data_dict.get("invoice_number"):
-        validator_json["invoice_number"] = {
-            "message": "INVOICE NUMBER is missing",
-            "status": "error"
-        }
-    else:
-        validator_json["invoice_number"] = {
-            "message": "INVOICE NUMBER is present",
-            "status": "warning"
-        }
+        data, token_split = extract_with_gemini(image_base64, model_name, doc_type)
     
-    # Invoice date validation
- 
-
-    invoice_date = data_dict.get("invoice_date")
-
-    if not invoice_date:
-        validator_json["invoice_date"] = {
-            "message": "INVOICE DATE is missing",
-            "status": "error"
-        }
-    else:
-        try:
-            # Adjust format if your input is different (YYYY-MM-DD assumed)
-            invoice_date_obj = datetime.strptime(invoice_date, "%Y-%m-%d").date()
-
-            if invoice_date_obj > date.today():
-                validator_json["invoice_date"] = {
-                    "message": "INVOICE DATE is in the future",
-                    "status": "error"
-                }
-            else:
-                validator_json["invoice_date"] = {
-                    "message": "INVOICE DATE is valid",
-                    "status": "ok"
-                }
-
-        except ValueError:
-            validator_json["invoice_date"] = {
-                "message": "INVOICE DATE format is invalid (expected YYYY-MM-DD)",
-                "status": "error"
-            }
-
-
-    # Invoice type validation
-    invoice_type = data_dict.get("invoice_type")
-    if not invoice_type:
-        validator_json["invoice_type"] = {
-            "message": "INVOICE TYPE is missing",
-            "status": "error"
-        }
-    else:
-        validator_json["invoice_type"] = {
-            "message": "INVOICE TYPE is present",
-            "status": "ok"
-        }
-    
-    # Grand total validation
-    grand_total = data_dict.get("grand_total")
-    if not grand_total:
-        validator_json["grand_total"] = {
-            "message": "GRAND TOTAL is missing",
-            "status": "error"
-        }
-    else:
-        if grand_total != data_dict.get("financial_totals", {}).get("grand_total"):
-            validator_json["grand_total"] = {
-                "message": "GRAND TOTAL does not match with financial totals",
-                "status": "warning"
-            }
-        else:
-            validator_json["grand_total"] = {
-                "message": "GRAND TOTAL is valid",
-                "status": "ok"
-            }
-
-    # Financials
-    financial_totals = data_dict.get("financial_totals")
-    total_igst = financial_totals.get("tax_breakup").get("total_igst")
-    total_cgst = financial_totals.get("tax_breakup").get("total_cgst")
-    total_sgst = financial_totals.get("tax_breakup").get("total_sgst")
-    total_cess = financial_totals.get("tax_breakup").get("total_cess")
-    message = []
-    status = 'ok'
-
-    if abs(financial_totals.get("total_tax_amount") - data_dict.get("total_tax_amount")) > 1:
-        message.append("TOTAL TAX AMOUNT does not match with financial totals")
-        status = 'warning'
-    
-    if abs(financial_totals.get("total_taxable_value") - data_dict.get("total_taxable_value")) > 1:
-        message.append("TOTAL TAXABLE VALUE does not match with financial totals")
-        status = 'warning'
-
-    if abs(total_igst + total_cgst + total_sgst + total_cess - financial_totals.get("total_tax_amount")) > 1:
-        message.append("Total tax amount is not matching with the sum of individual taxes")
-        status = 'warning'
-
-    if abs(financial_totals['grand_total'] - (financial_totals['total_taxable_value'] + financial_totals['total_tax_amount'] - financial_totals['header_discount_amount'] + financial_totals['rounding_adjustment'])) > 2:
-        message.append("GRAND TOTAL does not match with financial totals")
-        status = 'warning'
-    
-    validator_json['financial_totals']={
-        "message": 'Financial totals is valid' if not message else message,
-        "status": status
-    }   
-
-    
-    # Line items
-    line_items = data_dict.get("line_items")
-    hsn_sac_regex = re.compile(r'^[0-9]{4,8}$')
-    message = []
-    status = 'ok'
-    if not line_items or len(line_items) == 0:
-       message.append("LINE ITEMS are missing")
-       status = 'error'
-  
-    for item in line_items:
-        if not hsn_sac_regex.fullmatch(str(item.get("classification").get("hsn_sac_code"))):
-            message.append(f"HSN/SAC code is invalid for {item.get('description')}")
-            status = 'warning'
-        
-        if item.get("quantities").get("billed_quantity")*item.get("financials").get("unit_price") != item.get("financials").get("gross_amount"):
-            message.append(f"Gross amount is not matching for {item.get('description')}")
-            status = 'warning'
-        
-
-        if abs(item['financials']['gross_amount'] -(item['financials']['taxable_value'] + item['financials']['discount_amount'])) > 1:
-            message.append(f"Gross amount is not matching for {item.get('description')}")
-            status = 'warning'
-
-    validator_json["line_items"] = {
-        "message": 'Line item is valid' if not message else message,
-        "status": status
-    }
-
-    
-    gstin_regex = re.compile(
-        r'^(0[1-9]|[1-2][0-9]|3[0-8])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'
-    )
-    pan_regex = re.compile(r'^[A-Z]{5}[0-9]{4}[A-Z]$')
-    ifsc_regex = re.compile(r'^[A-Z]{4}0[A-Z0-9]{6}$')
-
-    # Seller details
-
-    seller_details = data_dict.get("seller_details")
-    message =[]
-    status = 'ok'
-    if not seller_details.get('gstin'):
-        message.append("SELLER GSTIN is missing")
-        status = 'error'
-    else:
-        if not gstin_regex.fullmatch(str(seller_details.get('gstin'))):
-            message.append("SELLER GSTIN is invalid")
-            status= 'warning'
-        else:
-            if str(seller_details.get('gstin'))[0:2] != str(seller_details.get("state_code", "")):
-                message.append("SELLER GSTIN did not match with seller state code")
-                status= 'warning'
-            if str(seller_details.get('gstin'))[2:12] != str(seller_details.get("pan", "")):
-                message.append("SELLER GSTIN did not match with seller pan")
-                status= 'warning'
-
-    if not seller_details.get('pan'):
-        message.append("SELLER PAN is missing")
-        status = 'warning'
-    else:
-        if not pan_regex.fullmatch(str(seller_details.get('pan'))):
-            message.append("SELLER PAN is invalid")
-            status= 'warning'
-
-    if seller_details.get("name") != data_dict.get("seller_name"):
-        message.append("SELLER NAME did not match with Header seller name")
-        status= 'warning'
-    
-    bank_details = seller_details.get("bank_details")
-
-    if not bank_details.get("ifsc_code"):
-        message.append("SELLER BANK IFSC CODE is missing")
-        status = 'warning'
-    else:
-        if not ifsc_regex.fullmatch(str(bank_details.get("ifsc_code"))):
-            message.append("SELLER BANK IFSC CODE is invalid")
-            status= 'warning'
-    
-    if not bank_details.get("account_number"):
-        message.append("SELLER BANK ACCOUNT NUMBER is missing")
-        status = 'warning'
-    else:
-        if not bank_details.get("account_number").isdigit():
-            message.append("SELLER BANK ACCOUNT NUMBER is invalid")
-            status= 'warning'
-    
-    validator_json["seller_details"] = {
-        "message": "SELLER DETAILS are valid" if not message else message,
-        "status": status
-    }
-
-    # Buyer details
-    buyer_details = data_dict.get("buyer_details")
-    message =[]
-    status = 'ok'
-    if not buyer_details.get('gstin'):
-        message.append("BUYER GSTIN is missing")
-        status = 'error'
-    else:
-        if not gstin_regex.fullmatch(str(buyer_details.get('gstin'))):
-            message.append("BUYER GSTIN is invalid")
-            status= 'warning'
-        else:
-            if str(buyer_details.get('gstin'))[0:2] != str(buyer_details.get("state_code", "")):
-                message.append("BUYER GSTIN did not match with buyer state code")
-                status= 'warning'
-            if str(buyer_details.get('gstin'))[2:12] != str(buyer_details.get("pan", "")):
-                message.append("BUYER GSTIN did not match with buyer pan")
-                status= 'warning'
-    
-    if not buyer_details.get('pan'):
-        message.append("BUYER PAN is missing")
-        status = 'warning'
-    else:
-        if not pan_regex.fullmatch(str(buyer_details.get('pan'))):
-            message.append("BUYER PAN is invalid")
-            status= 'warning'
-    
-    if buyer_details.get("name") != data_dict.get("buyer_name"):
-        message.append("BUYER NAME did not match with Header buyer name")
-        status= 'warning'
-    
-    validator_json["buyer_details"] = {
-        "message": "BUYER DETAILS are valid" if not message else message,
-        "status": status
-    }
-
-
-
-    # compliance markers
-    eway_bill_regex = re.compile(r'^[0-9]{12}$')
-    hsn_regex = re.compile(r'^[0-9]{6,8}$')
-    compliance_markers = data_dict.get("compliance_markers")
-
-    if compliance_markers.get("e_way_bill_number"):
-        if not eway_bill_regex.fullmatch(str(compliance_markers.get("e_way_bill_number"))):
-           validator_json['compliance_markers']['e_way_bill_number'] = {
-               "message": "E-WAY BILL NUMBER is invalid",
-               "status": "warning"
-           }
-    # Purchase order number
-
-    if not data_dict.get("purchase_order_numbers") or len(data_dict.get("purchase_order_numbers")) == 0:
-        validator_json['purchase_order_numbers'] = {
-            "message": "PURCHASE ORDER NUMBER is missing",
-            "status": "error"
-        }
-    else:
-        validator_json['purchase_order_numbers'] = {
-            "message": "PURCHASE ORDER NUMBER is present",
-            "status": "ok"
-        }
-    return validator_json
-
-
-
-
-
-
-
-    
-        
-    
+    return data, token_split
