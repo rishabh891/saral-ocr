@@ -268,6 +268,235 @@ def extract_with_openai(image_base64, model_name, prompt=None):
 
 # 1. Initialize client globally once to save handshake time
 client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
+target_schema = {
+    "type": "OBJECT",
+    "properties": {
+        "invoice_number": {"type": "STRING"},
+        "invoice_date": {"type": "STRING", "description": "YYYY-MM-DD"},
+        "invoice_type": {"type": "STRING", "nullable": True},
+        "grand_total": {"type": "NUMBER", "description": "Final payable amount. Set to 0.0 if not found."},
+        "seller_name": {"type": "STRING"},
+        "buyer_name": {"type": "STRING"},
+        "total_taxable_value": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+        "total_tax_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+        "model_name": {"type": "STRING"},
+        "currency_code": {"type": "STRING", "nullable": True},
+        "scan_timestamp": {"type": "STRING", "description": "ISO-8601-with-TZ"},
+        "purchase_order_numbers": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "delivery_challan_numbers": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "line_items": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "line_number": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                    "description": {"type": "STRING"},
+                    "classification": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "hsn_sac_code": {"type": "STRING", "nullable": True},
+                            "is_service": {"type": "BOOLEAN", "nullable": True}
+                        }
+                    },
+                    "quantities": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "billed_quantity": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "unit_of_measure": {"type": "STRING", "nullable": True}
+                        },
+                        "required": ["billed_quantity"]
+                    },
+                    "financials": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "unit_price": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "gross_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "discount_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "taxable_value": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+                        },
+                        "required": ["unit_price", "gross_amount", "discount_amount", "taxable_value"]
+                    },
+                    "taxes": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "tax_rate_percentage": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "igst_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "cgst_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "sgst_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                            "cess_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+                        },
+                        "required": ["tax_rate_percentage", "igst_amount", "cgst_amount", "sgst_amount", "cess_amount"]
+                    },
+                    "total_line_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+                },
+                "required": ["line_number", "description", "total_line_amount"]
+            }
+        },
+        "seller_details": {
+            "type": "OBJECT",
+            "properties": {
+                "name": {"type": "STRING", "nullable": True},
+                "trade_name": {"type": "STRING", "nullable": True},
+                "billing_address": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "raw": {"type": "STRING", "nullable": True},
+                        "street": {"type": "STRING", "nullable": True},
+                        "city": {"type": "STRING", "nullable": True},
+                        "state": {"type": "STRING", "nullable": True},
+                        "pincode": {"type": "STRING", "nullable": True},
+                        "country": {"type": "STRING", "nullable": True}
+                    }
+                },
+                "gstin": {"type": "STRING", "nullable": True},
+                "pan": {"type": "STRING", "nullable": True},
+                "state_code": {"type": "STRING", "nullable": True},
+                "contact": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "phone": {"type": "STRING", "nullable": True},
+                        "email": {"type": "STRING", "nullable": True}
+                    }
+                },
+                "bank_details": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "account_number": {"type": "STRING", "nullable": True},
+                        "ifsc_code": {"type": "STRING", "nullable": True},
+                        "bank_name": {"type": "STRING", "nullable": True}
+                    }
+                }
+            }
+        },
+        "buyer_details": {
+            "type": "OBJECT",
+            "properties": {
+                "name": {"type": "STRING", "nullable": True},
+                "billing_address": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "raw": {"type": "STRING", "nullable": True},
+                        "street": {"type": "STRING", "nullable": True},
+                        "city": {"type": "STRING", "nullable": True},
+                        "state": {"type": "STRING", "nullable": True},
+                        "pincode": {"type": "STRING", "nullable": True},
+                        "country": {"type": "STRING", "nullable": True}
+                    }
+                },
+                "shipping_address": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "raw": {"type": "STRING", "nullable": True},
+                        "street": {"type": "STRING", "nullable": True},
+                        "city": {"type": "STRING", "nullable": True},
+                        "state": {"type": "STRING", "nullable": True},
+                        "pincode": {"type": "STRING", "nullable": True},
+                        "country": {"type": "STRING", "nullable": True}
+                    }
+                },
+                "gstin": {"type": "STRING", "nullable": True},
+                "pan": {"type": "STRING", "nullable": True},
+                "state_code": {"type": "STRING", "nullable": True}
+            }
+        },
+        "financial_totals": {
+            "type": "OBJECT",
+            "properties": {
+                "total_taxable_value": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                "total_tax_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                "tax_breakup": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "total_igst": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                        "total_cgst": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                        "total_sgst": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                        "total_cess": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+                    },
+                    "required": ["total_igst", "total_cgst", "total_sgst", "total_cess"]
+                },
+                "charges": {
+            "type": "OBJECT",
+            "properties": {
+                "shipping_charges": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                "packaging_charges": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                "insurance_charges": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+            },
+            "required": ["shipping_charges", "packaging_charges", "insurance_charges"]
+        },
+         "header_discount_amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+
+        "tcs_details": {
+            "type": "OBJECT",
+            "properties": {
+                "applicable": {"type": "BOOLEAN", "nullable": True},
+                "rate_percentage": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+                "amount": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."}
+            },
+            "required": ["rate_percentage", "amount"]
+        },
+         "grand_total": {"type": "NUMBER", "description": "Final payable amount. Set to 0.0 if not found."},
+     "rounding_adjustment": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
+        "amount_in_words": {"type": "STRING", "nullable": True},
+
+            },
+            "required": ["total_taxable_value", "total_tax_amount", "header_discount_amount", "rounding_adjustment", "grand_total", "amount_in_words"]
+        },
+        "logistics_details": {
+            "type": "OBJECT",
+            "properties": {
+                "transporter_name": {"type": "STRING", "nullable": True},
+                "vehicle_number": {"type": "STRING", "nullable": True},
+                "Ir_number": {"type": "STRING", "nullable": True},
+                "Ir_date": {"type": "STRING", "nullable": True},
+                "mode_of_transport": {"type": "STRING", "nullable": True}
+            }
+        },
+        "compliance_markers": {
+            "type": "OBJECT",
+            "properties": {
+                "irn_hash": {"type": "STRING", "nullable": True},
+                "e_way_bill_number": {"type": "STRING", "nullable": True},
+                "ack_number": {"type": "STRING", "nullable": True},
+                "ack_date": {"type": "STRING", "nullable": True},
+                "delivery_proof_present": {"type": "BOOLEAN", "nullable": True},
+                "delivery_proof_type": {"type": "STRING", "nullable": True},
+                "signature_present": {"type": "BOOLEAN", "nullable": True},
+                "is_digitally_signed": {"type": "BOOLEAN", "nullable": True}
+            }
+        },
+        "invoice_header_meta": {
+            "type": "OBJECT",
+            "properties": {
+                "supply_type": {"type": "STRING", "nullable": True},
+                "place_of_supply": {"type": "STRING", "nullable": True},
+                "reverse_charge_applicable": {"type": "BOOLEAN", "nullable": True},
+                "due_date": {"type": "STRING", "nullable": True},
+                "payment_terms": {"type": "STRING", "nullable": True},
+                "payment_instruction": {"type": "STRING", "nullable": True}
+            }
+        },
+        "additional_attributes": {
+            "type": "OBJECT",
+            "properties": {
+                "remarks": {"type": "STRING", "nullable": True},
+                "sales_person": {"type": "STRING", "nullable": True},
+                "delivery_slot": {"type": "STRING", "nullable": True},
+                "customer_notes": {"type": "STRING", "nullable": True}
+            }
+        }
+    },
+    "required": [
+        "invoice_number",
+        "invoice_date",
+        "grand_total",
+        "seller_name",
+        "buyer_name",
+        "model_name",
+        "scan_timestamp",
+        "total_taxable_value",
+        "total_tax_amount",
+    ]
+}
 
 def extract_with_gemini(image_base64, model_name, prompt=None):
     # Prepare the dynamic data
@@ -282,12 +511,13 @@ def extract_with_gemini(image_base64, model_name, prompt=None):
         ],
         config=types.GenerateContentConfig(
             # Moves your rules/schema into the model's core logic
-            system_instruction=final_prompt,
+           system_instruction="Extract the requested data from the image accurately.",
             temperature=0,
             top_p=0.1,
             max_output_tokens=6000,
             # Programmatically forces JSON (no markdown backticks!)
             response_mime_type="application/json",
+            response_schema=target_schema
         )
     )
 
