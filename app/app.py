@@ -22,7 +22,7 @@ with st.sidebar:
 
     model_name = st.selectbox(
         "Select Model",
-        ["gpt-4.1", "gpt-5-mini","gpt-5-nano",  "gpt-5.2", "gemini-2.5-flash-lite", "gemini-2.5-flash"],
+        ["gpt-4.1", "gpt-5-mini","gpt-5-nano",  "gpt-5.2", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-3-flash-preview"],
         index=0,
     )
 

@@ -407,7 +407,7 @@ def validator(data_dict):
         message.append("Total tax amount is not matching with the sum of individual taxes")
         status = 'warning'
 
-    if abs(financial_totals['grand_total'] - (financial_totals['total_taxable_value'] + financial_totals['total_tax_amount'] + financial_totals['charges']['shipping_charges'] + financial_totals['charges']['insurance_charges'] + financial_totals['charges']['packaging_charges'] - financial_totals['header_discount_amount'] + financial_totals['rounding_adjustment'])) > 2:
+    if abs(financial_totals['grand_total'] - (financial_totals['total_taxable_value'] + financial_totals['total_tax_amount'] - financial_totals['header_discount_amount'] + financial_totals['rounding_adjustment'])) > 2:
         message.append("GRAND TOTAL does not match with financial totals")
         status = 'warning'
     
@@ -426,7 +426,6 @@ def validator(data_dict):
        message.append("LINE ITEMS are missing")
        status = 'error'
   
-    gross_total_tax = 0
     for item in line_items:
         if not hsn_sac_regex.fullmatch(str(item.get("classification").get("hsn_sac_code"))):
             message.append(f"HSN/SAC code is invalid for {item.get('description')}")
@@ -436,31 +435,10 @@ def validator(data_dict):
             message.append(f"Gross amount is not matching for {item.get('description')}")
             status = 'warning'
         
-        igst = item['taxes']['igst_amount']
-        cgst = item['taxes']['cgst_amount']
-        sgst = item['taxes']['sgst_amount']
-        cess = item['taxes']['cess_amount']
-        tax_rate = item['taxes']['tax_rate_percentage']
-
-        total_taxes = igst + cgst + sgst + cess
-        gross_total_tax += total_taxes
-
-        if abs(item['financials']['taxable_value'] * tax_rate/100 - total_taxes) > 2:
-            message.append(f"Total tax amount is not matching for {item.get('description')}")
-            status = 'warning'
-
-        if abs(item['total_line_amount'] - (item['financials']['taxable_value'] + total_taxes)) > 1:
-            message.append(f"Total line amount is not matching for {item.get('description')}")
-            status = 'warning'
 
         if abs(item['financials']['gross_amount'] -(item['financials']['taxable_value'] + item['financials']['discount_amount'])) > 1:
             message.append(f"Gross amount is not matching for {item.get('description')}")
             status = 'warning'
-
-
-    if abs(gross_total_tax - data_dict.get("total_tax_amount")) > 1:
-        message.append("Total tax amount is not matching with the sum of individual taxes")
-        status = 'warning'
 
     validator_json["line_items"] = {
         "message": 'Line item is valid' if not message else message,
@@ -578,6 +556,18 @@ def validator(data_dict):
                "message": "E-WAY BILL NUMBER is invalid",
                "status": "warning"
            }
+    # Purchase order number
+
+    if not data_dict.get("purchase_order_numbers") or len(data_dict.get("purchase_order_numbers")) == 0:
+        validator_json['purchase_order_numbers'] = {
+            "message": "PURCHASE ORDER NUMBER is missing",
+            "status": "error"
+        }
+    else:
+        validator_json['purchase_order_numbers'] = {
+            "message": "PURCHASE ORDER NUMBER is present",
+            "status": "ok"
+        }
     return validator_json
 
 
