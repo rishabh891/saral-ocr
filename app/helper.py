@@ -9,7 +9,7 @@ from docx import Document
 from google import genai
 from google.genai import types
 import re
-from datetime import datetime
+from datetime import date, datetime
 
 INVOICE_SCHEMA={
     "invoice_number": "",
@@ -336,23 +336,37 @@ def validator(data_dict):
         }
     
     # Invoice date validation
+ 
+
     invoice_date = data_dict.get("invoice_date")
+
     if not invoice_date:
         validator_json["invoice_date"] = {
             "message": "INVOICE DATE is missing",
             "status": "error"
         }
     else:
-        if datetime.strptime(invoice_date, "%Y-%m-%d") > datetime.now():
-          validator_json["invoice_date"]={
-            "message": "INVOICE DATE is in the future",
-            "status": "error"
-          }
-        else:
-          validator_json["invoice_date"]={
-            "message": "INVOICE DATE is valid",
-            "status": "ok"
-          }
+        try:
+            # Adjust format if your input is different (YYYY-MM-DD assumed)
+            invoice_date_obj = datetime.strptime(invoice_date, "%Y-%m-%d").date()
+
+            if invoice_date_obj > date.today():
+                validator_json["invoice_date"] = {
+                    "message": "INVOICE DATE is in the future",
+                    "status": "error"
+                }
+            else:
+                validator_json["invoice_date"] = {
+                    "message": "INVOICE DATE is valid",
+                    "status": "ok"
+                }
+
+        except ValueError:
+            validator_json["invoice_date"] = {
+                "message": "INVOICE DATE format is invalid (expected YYYY-MM-DD)",
+                "status": "error"
+            }
+
 
     # Invoice type validation
     invoice_type = data_dict.get("invoice_type")
