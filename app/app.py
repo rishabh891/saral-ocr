@@ -14,6 +14,7 @@ st.set_page_config(page_title="SARAL OCR", layout="wide", initial_sidebar_state=
 if "invoice_data" not in st.session_state:
     st.session_state.invoice_data = None
     st.session_state.model = None
+    st.session_state.token_split = None
 if "refresh_gsheet" not in st.session_state:
     st.session_state.refresh_gsheet = False
 
@@ -60,7 +61,7 @@ with st.sidebar:
                         st.session_state.invoice_data, st.session_state.model = extract_with_openai(
                         image_base64, model_name, prompt)
                     else:
-                        st.session_state.invoice_data, st.session_state.model = extract_with_gemini(
+                        st.session_state.invoice_data, st.session_state.model, st.session_state.token_split = extract_with_gemini(
                         image_base64, model_name, prompt)
 
                 except Exception as e:
@@ -71,6 +72,7 @@ with st.sidebar:
 if st.session_state.invoice_data and st.session_state.model:
   
     raw = st.session_state.invoice_data
+    token_split = st.session_state.token_split
     try:
         json_data = raw
         if "```json" in raw:
@@ -154,6 +156,23 @@ if st.session_state.invoice_data and st.session_state.model:
         df = pd.DataFrame(rows)
 
         st.dataframe(df, height=500)
+        if st.session_state.model.startswith('gemini'):
+            st.divider()
+            col1, col2 , col3, col4= st.columns(4, border=True)
+            with col1:
+                st.markdown("##### Input Tokens")
+                st.write(token_split.get("prompt"))
+            with col2:
+                st.markdown("##### Reasoning")
+                st.write(token_split.get("thoughts"))
+            with col3:
+                st.markdown("##### Output Tokens")
+                st.write(token_split.get("candidates"))
+            with col4:
+                st.markdown("##### Total Tokens")
+                st.write(token_split.get("total"))
+            
+        st.divider()
         if st.session_state.refresh_gsheet:
             sheet_df = get_gsheet_data()
             st.session_state.refresh_gsheet = False

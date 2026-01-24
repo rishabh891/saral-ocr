@@ -266,35 +266,42 @@ def extract_with_openai(image_base64, model_name, prompt=None):
 
     return response.output_text, response.model
 
+# 1. Initialize client globally once to save handshake time
+client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
+
 def extract_with_gemini(image_base64, model_name, prompt=None):
-    client = genai.Client(api_key=st.secrets.get("GEMINI_API_KEY", ""))
-
-    final_prompt=get_prompt(prompt)
-
+    # Prepare the dynamic data
+    final_prompt = get_prompt(prompt)
     image_bytes = base64.b64decode(image_base64)
-
+    
+    # 2. Generate content with static instructions separated
     response = client.models.generate_content(
         model=model_name,
-        config={
-            "temperature": 0,
-            "top_p": 0.1,
-            "max_output_tokens": 6000,
-        },
         contents=[
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=final_prompt),
-                        types.Part.from_bytes(
-                            data=image_bytes, 
-                            mime_type="image/png"
-                        )
-                    ]
-                )
-            ]
+            types.Part.from_bytes(data=image_bytes, mime_type="image/png")
+        ],
+        config=types.GenerateContentConfig(
+            # Moves your rules/schema into the model's core logic
+            system_instruction=final_prompt,
+            temperature=0,
+            top_p=0.1,
+            max_output_tokens=6000,
+            # Programmatically forces JSON (no markdown backticks!)
+            response_mime_type="application/json",
+        )
     )
-    return response.text.strip(), model_name
 
+    # 3. Clean Metadata Extraction
+    usage = response.usage_metadata
+    token_split = {
+        "prompt": usage.prompt_token_count,
+        # Safely handle 'thoughts' which only exists for reasoning models
+        "thoughts": getattr(usage, 'thoughts_token_count', 0),
+        "candidates": usage.candidates_token_count,
+        "total": usage.total_token_count
+    }
+
+    return response.text.strip(), model_name, token_split
 def invoice_validator(data_dict):
     gstin_regex = re.compile(
         r'^(0[1-9]|[1-2][0-9]|3[0-8])[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'
