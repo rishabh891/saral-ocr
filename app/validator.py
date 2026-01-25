@@ -13,7 +13,7 @@ def validator(data_dict):
     else:
         validator_json["invoice_number"] = {
             "message": "INVOICE NUMBER is present",
-            "status": "warning"
+            "status": "ok"
         }
     
     # Invoice date validation

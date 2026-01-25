@@ -492,6 +492,7 @@ invoice_target_schema = {
             "type": "ARRAY",
             "items": {
                 "type": "OBJECT",
+                "description": "DO NOT add Freight charges/Shipping Charges as a line item.",
                 "properties": {
                     "line_number": {"type": "NUMBER", "nullable": False, "description": "Set to 0.0 if not found."},
                     "description": {"type": "STRING"},

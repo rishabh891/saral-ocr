@@ -18,6 +18,10 @@ def normalize_value(val):
         return json.dumps(val)
     return val
 
+def string_cleaner(val):
+    result = "".join(c for c in val if c.isalpha())
+    new_string = ''.join(char for char in result if not char.isdigit())
+    return new_string.lower()
 
 def two_way_matching(invoice_data, po_data):
 
@@ -30,16 +34,19 @@ def two_way_matching(invoice_data, po_data):
     # Header-level checks
     # -----------------------
     po_numbers = invoice_json.get("purchase_order_numbers", [])
-    po_number_match = po_json["purchase_order_number"] in po_numbers
+
+    po_number_match_similarity = max(
+        similarity(po_json["purchase_order_number"], po_num) for po_num in po_numbers
+    )
 
     seller_similarity = similarity(
-        po_json.get("seller_name", ""),
-        invoice_json.get("seller_name", "")
+        string_cleaner(po_json.get("seller_name", "")),
+        string_cleaner(invoice_json.get("seller_name", ""))
     )
 
     buyer_similarity = similarity(
-        invoice_json.get("buyer_name", ""),
-        po_json.get("buyer_name", "")
+        invoice_json.get("buyer_details", "").get("gstin", ""),
+        po_json.get("buyer_details", "").get("gstin", "")
     )
 
     invoice_total = invoice_json.get("grand_total", 0.0)
@@ -50,14 +57,25 @@ def two_way_matching(invoice_data, po_data):
         if po_total else 0
     )
 
+    date_score = invoice_json.get("invoice_date", "") >= po_json.get("purchase_order_date", "")
+
     results.extend([
         {
             "level": "HEADER",
             "field": "PO Number",
             "invoice_value": normalize_value(po_numbers),
             "po_value": po_json["purchase_order_number"],
-            "match": po_number_match,
-            "score": 1.0 if po_number_match else 0.0
+            "match": po_number_match_similarity == 1.0,
+            "score": round(po_number_match_similarity, 2)
+        },
+        {
+            "level" : "HEADER",
+            "field" : "Date",
+            "invoice_value" : invoice_json.get("invoice_date"),
+            "po_value" : po_json.get("purchase_order_date"),
+            "match" : date_score,
+            "score" : 1.0 if date_score else 0.0
+
         },
         {
             "level": "HEADER",
@@ -69,9 +87,9 @@ def two_way_matching(invoice_data, po_data):
         },
         {
             "level": "HEADER",
-            "field": "Buyer Name",
-            "invoice_value": invoice_json.get("buyer_name"),
-            "po_value": po_json.get("buyer_name"),
+            "field": "Buyer GSTIN",
+            "invoice_value": invoice_json.get("buyer_details", "").get("gstin", ""),
+            "po_value": po_json.get("buyer_details", "").get("gstin", ""),
             "match": buyer_similarity > 0.9,
             "score": round(buyer_similarity, 2)
         },
@@ -115,9 +133,9 @@ def two_way_matching(invoice_data, po_data):
         price_score = 1 - min(abs(inv_price - po_price) / po_price, 1) if po_price else 0
 
         line_score = (
-            best_score * 0.4 +
-            qty_score * 0.3 +
-            price_score * 0.3
+            best_score * 0.2 +
+            qty_score * 0.4 +
+            price_score * 0.4
         )
 
         results.append({

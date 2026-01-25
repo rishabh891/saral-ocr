@@ -8,6 +8,7 @@ from datetime import datetime
 from invoice import invoice_page
 from po import po_page
 from two_way_matching import two_way_matching
+import concurrent.futures
 
 st.set_page_config(page_title="SARAL OCR", layout="wide", initial_sidebar_state="expanded")
 
@@ -61,18 +62,32 @@ with st.sidebar:
         with col2:
             st.image(po, caption="Uploaded PO")
 
-        if st.button("Extract and validate", width='stretch'):
-            with st.spinner("Extracting Invoice ..."):
+        if st.button("Extract and validate", use_container_width=True):
+            with st.spinner("Extracting Invoice & PO simultaneously..."):
                 try:
-                   st.session_state.invoice_data, st.session_state.token_split_invoice = extract_validator(uploaded_invoice, st.session_state.model_name, "invoice")
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                        future_invoice = executor.submit(
+                            extract_validator,
+                            uploaded_invoice,
+                            st.session_state.model_name,
+                            "invoice"
+                        )
+
+                        future_po = executor.submit(
+                            extract_validator,
+                            uploaded_po,
+                            st.session_state.model_name,
+                            "po"
+                        )
+
+                        invoice_result = future_invoice.result()
+                        po_result = future_po.result()
+
+                    st.session_state.invoice_data, st.session_state.token_split_invoice = invoice_result
+                    st.session_state.po_data, st.session_state.token_split_po = po_result
+
                 except Exception as e:
-                    st.error(f"Error extracting invoice: {str(e)}")
-            
-            with st.spinner("Extracting PO ..."):
-                try:
-                   st.session_state.po_data, st.session_state.token_split_po = extract_validator(uploaded_po, st.session_state.model_name, "po")
-                except Exception as e:
-                    st.error(f"Error extracting PO: {str(e)}")
+                    st.error(f"Extraction failed: {e}")
             
         
 
