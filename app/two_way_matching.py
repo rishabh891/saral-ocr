@@ -35,9 +35,12 @@ def two_way_matching(invoice_data, po_data):
     # -----------------------
     po_numbers = invoice_json.get("purchase_order_numbers", [])
 
-    po_number_match_similarity = max(
-        similarity(po_json["purchase_order_number"], po_num) for po_num in po_numbers
-    )
+    try:
+        po_number_match_similarity = max(
+            similarity(po_json["purchase_order_number"], po_num) for po_num in po_numbers
+        )
+    except ValueError:
+        po_number_match_similarity = 0.0
 
     seller_similarity = similarity(
         string_cleaner(po_json.get("seller_name", "")),
@@ -141,8 +144,16 @@ def two_way_matching(invoice_data, po_data):
         results.append({
             "level": "LINE",
             "field": f"Line {inv_line.get('line_number')}",
-            "invoice_value": inv_line.get("description"),
-            "po_value": best_match.get("description"),
+            "invoice_value": {
+                "description" : inv_line.get("description"),
+                "quantity" : inv_line.get("quantities", {}).get("billed_quantity", 0),
+                "price" : inv_line.get("financials", {}).get("unit_price", 0)
+            },
+            "po_value": {
+                "description" : best_match.get("description"),
+                "quantity" : best_match.get("quantities", {}).get("ordered_quantity", 0),
+                "price" : best_match.get("financials", {}).get("unit_price", 0)
+            },
             "match": line_score >= 0.8,
             "score": round(line_score, 2)
         })

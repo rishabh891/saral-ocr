@@ -286,6 +286,7 @@ po_target_schema = {
 
         "line_items": {
             "type": "ARRAY",
+            "description": "DO NOT add Freight charges/Shipping Charges as a line item.",
             "items": {
                 "type": "OBJECT",
                 "properties": {
