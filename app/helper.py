@@ -723,7 +723,7 @@ def extract_with_gemini(image_base64, model_name, doc_type):
            system_instruction="Extract the requested data from the image accurately.",
             temperature=0,
             top_p=0.1,
-            max_output_tokens=6000,
+            max_output_tokens=10000,
             response_mime_type="application/json",
             response_schema=response_schema
         )

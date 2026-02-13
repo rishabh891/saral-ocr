@@ -41,70 +41,90 @@ with st.sidebar:
         type=["png", "jpg", "jpeg"],  # removed pdf (important)
         help="Upload a clear image of your invoice",
     )
-    uploaded_po = st.file_uploader(
-        "Choose PO image",
-        type=["png", "jpg", "jpeg"],  # removed pdf (important)
-        help="Upload a clear image of your PO",
-    )
+    # uploaded_po = st.file_uploader(
+    #     "Choose PO image",
+    #     type=["png", "jpg", "jpeg"],  # removed pdf (important)
+    #     help="Upload a clear image of your PO",
+    # )
 
-    if uploaded_invoice and uploaded_po:
+    if uploaded_invoice:
         invoice = Image.open(uploaded_invoice)
         invoice = invoice.rotate(-90)
         original_filename_invoice = uploaded_invoice.name
         image_name_invoice = os.path.splitext(original_filename_invoice)[0]
-        po = Image.open(uploaded_po)
-        po = po.rotate(-90)
-        original_filename_po = uploaded_po.name
-        image_name_po = os.path.splitext(original_filename_po)[0]
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(invoice, caption="Uploaded Invoice")
-        with col2:
-            st.image(po, caption="Uploaded PO")
+        st.image(invoice, caption="Uploaded Invoice")
 
-        if st.button("Extract and validate", use_container_width=True):
-            with st.spinner("Extracting Invoice & PO simultaneously..."):
+        if st.button("Extract", use_container_width=True):
+            with st.spinner("Extracting Invoice..."):
                 try:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                        future_invoice = executor.submit(
-                            extract_validator,
-                            uploaded_invoice,
-                            st.session_state.model_name,
-                            "invoice"
-                        )
-
-                        future_po = executor.submit(
-                            extract_validator,
-                            uploaded_po,
-                            st.session_state.model_name,
-                            "po"
-                        )
-
-                        invoice_result = future_invoice.result()
-                        po_result = future_po.result()
-
-                    st.session_state.invoice_data, st.session_state.token_split_invoice = invoice_result
-                    st.session_state.po_data, st.session_state.token_split_po = po_result
-
+                    st.session_state.invoice_data, st.session_state.token_split_invoice = extract_validator(uploaded_invoice, st.session_state.model_name, "invoice")
                 except Exception as e:
                     st.error(f"Extraction failed: {e}")
-            
-        
-
-# ------------------ RESULT ------------------
 
 if st.session_state.invoice_data:
     raw = st.session_state.invoice_data
     token_split_invoice = st.session_state.token_split_invoice
     invoice_page(raw, image_name_invoice, token_split_invoice)
 
-if st.session_state.po_data:
-    raw = st.session_state.po_data
-    token_split_po = st.session_state.token_split_po
-    po_page(raw, image_name_po, token_split_po)
 
-if st.session_state.invoice_data and st.session_state.po_data:
-    two_way_matching(st.session_state.invoice_data, st.session_state.po_data)
+#     if uploaded_invoice and uploaded_po:
+#         invoice = Image.open(uploaded_invoice)
+#         invoice = invoice.rotate(-90)
+#         original_filename_invoice = uploaded_invoice.name
+#         image_name_invoice = os.path.splitext(original_filename_invoice)[0]
+#         po = Image.open(uploaded_po)
+#         po = po.rotate(-90)
+#         original_filename_po = uploaded_po.name
+#         image_name_po = os.path.splitext(original_filename_po)[0]
+#         col1, col2 = st.columns(2)
+#         with col1:
+#             st.image(invoice, caption="Uploaded Invoice")
+#         with col2:
+#             st.image(po, caption="Uploaded PO")
+
+#         if st.button("Extract and validate", use_container_width=True):
+#             with st.spinner("Extracting Invoice & PO simultaneously..."):
+#                 try:
+#                     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+#                         future_invoice = executor.submit(
+#                             extract_validator,
+#                             uploaded_invoice,
+#                             st.session_state.model_name,
+#                             "invoice"
+#                         )
+
+#                         future_po = executor.submit(
+#                             extract_validator,
+#                             uploaded_po,
+#                             st.session_state.model_name,
+#                             "po"
+#                         )
+
+#                         invoice_result = future_invoice.result()
+#                         po_result = future_po.result()
+
+#                     st.session_state.invoice_data, st.session_state.token_split_invoice = invoice_result
+#                     st.session_state.po_data, st.session_state.token_split_po = po_result
+
+#                 except Exception as e:
+#                     st.error(f"Extraction failed: {e}")
+            
+        
+
+# # ------------------ RESULT ------------------
+
+# if st.session_state.invoice_data:
+#     raw = st.session_state.invoice_data
+#     token_split_invoice = st.session_state.token_split_invoice
+#     invoice_page(raw, image_name_invoice, token_split_invoice)
+
+# if st.session_state.po_data:
+#     raw = st.session_state.po_data
+#     token_split_po = st.session_state.token_split_po
+#     po_page(raw, image_name_po, token_split_po)
+
+# if st.session_state.invoice_data and st.session_state.po_data:
+#     two_way_matching(st.session_state.invoice_data, st.session_state.po_data)
 
    
    
